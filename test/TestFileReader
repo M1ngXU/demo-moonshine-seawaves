@@ -1,0 +1,15 @@
+	include	"/includes/exec/exec_lib.i"
+	include	"/includes/exec/memory.i"
+	include	"/includes/libraries/dos_lib.i"
+	include	"/includes/libraries/dos.i"
+
+	lea	name,a0
+	bsr	FileReader_Create
+	move.l	a0,fr
+	move.l	fr,a0
+	bsr	FileReader_Destroy
+	rts
+fr	ds.l	1
+name	dc.b	"/pics/KerbalCursor.gif",0
+	even
+	include	"/api/FileReader"

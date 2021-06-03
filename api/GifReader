@@ -1,0 +1,264 @@
+GifReader_Depth	equ	0
+GifReader_NumberOfColors	equ	2
+GifReader_Width	equ	4
+GifReader_Height	equ	6
+GifReader_ImageSize	equ	8
+GifReader_Palette	equ	12
+GifReader_EncodedImage	equ	16
+GifReader_EncodedImageSize	equ	20
+GifReader_ObjectSize	equ	24
+
+;paint every n'th pixel in one frame (the higher this value the quicker one frame is drawn)
+GifReader_PixToBitMap_Stride	equ	47
+;for each pixing frame, start at how many pixels later (modulo stride) (should be some prime unrelated to stride)
+GifReader_PixToBitMap_FrameStride	equ	19
+
+;this completely removes the stride and pixes everything in one frame
+;GifReader_PixToBitMap_Stride	equ	1
+;GifReader_PixToBitMap_FrameStride	equ	0
+
+;Max's dropping range lucky find
+;GifReader_PixToBitMap_Stride	equ	61
+;GifReader_PixToBitMap_FrameStride	equ	23
+
+;STATIC
+;  IN
+;    a0 = Address of the character array containing the name of the image 
+;  OUT
+;    a0 = pointer to object instance
+GifReader_Create
+	movem.l	a1-6/d0-7,-(a7)
+	move.l	a0,a2
+	move.l	#GifReader_ObjectSize,d0
+	move.l	#MEMF_FAST+MEMF_CLEAR,d1	;ensure clean structure if errors lead to quick end
+	move.l	4.w,a6
+	jsr	AllocMem(a6)
+	move.l	d0,a4	;gif reader object
+	move.l	a2,a0
+	bsr	FileReader_Create
+	move.l	a0,a2	;file reader
+	move.l	FileReader_ContentPointer(a2),a5	;current position in GIF file
+	lea	GifReader_CompatibleGifTypeName,a0
+	move.w	#GifReader_CompatibleGifTypeNameEnd-GifReader_CompatibleGifTypeName,d0
+GifReader_Create_CheckFileType
+	cmp.b	(a5)+,(a0)+
+	bne	GifReader_Create_End
+	sub.w	#1,d0
+	bne	GifReader_Create_CheckFileType
+	
+	;LOGICAL SCREEN DESCRIPTOR
+	move.b	1(a5),GifReader_Width(a4)
+	move.b	0(a5),GifReader_Width+1(a4)
+	move.b	3(a5),GifReader_Height(a4)
+	move.b	2(a5),GifReader_Height+1(a4)
+	move.w	GifReader_Width(a4),d0
+	move.w	GifReader_Height(a4),d1
+	mulu	d1,d0
+	move.l	d0,GifReader_ImageSize(a4)
+	move.b	4(a5),d0
+	and.w	#%111,d0
+	add.w	#1,d0
+	move.w	d0,GifReader_Depth(a4)
+	move.w	#1,d1
+	lsl.w	d0,d1
+	move.w	d1,GifReader_NumberOfColors(a4)
+	add.l	#5+2,a5	;skip what is already read and the rest (background color and pixel ratio)
+
+	;GLOBAL COLOR TABLE
+	clr.l	d0
+	move.w	GifReader_NumberOfColors(a4),d0
+	lsl.w	#1,d0
+	move.l	#MEMF_FAST,d1
+	jsr	AllocMem(a6)
+	move.l	d0,GifReader_Palette(a4)
+	move.l	d0,a0
+	move.w	GifReader_NumberOfColors(a4),d0
+GifReader_Create_PaletteLp
+	move.b	(a5)+,d1
+	lsl.w	#4,d1
+	move.b	(a5)+,d1
+	lsl.w	#4,d1
+	move.b	(a5)+,d1
+	lsr.w	#4,d1
+	move.w	d1,(a0)+
+	sub.w	#1,d0
+	bne	GifReader_Create_PaletteLp
+
+	;IMAGE DESCRIPTOR
+	add.l	#10,a5	;skip (image assumed to be the same as the screen)
+	
+	;LOCAL COLOR TABLE
+	;assumed to be empty
+
+	;IMAGE DATA
+	add.l	#1,a5	;skip LZW minimum code size (assumed to be always depth)
+	move.l	FileReader_ContentPointer(a2),d0
+	add.l	FileReader_FileSize(a2),d0
+	sub.l	a5,d0
+	move.l	d0,GifReader_EncodedImageSize(a4)	;only upper bound estimation - there are still end bytes and further stuff in the GIF
+	move.l	#MEMF_FAST,d1
+	jsr	AllocMem(a6)
+	move.l	d0,GifReader_EncodedImage(a4)
+	move.l	d0,a3	;encoded image
+	add.l	GifReader_EncodedImageSize(a4),a3	;align codes right-to-left as bits are also read right-to-left
+GifReader_Create_ImageDataLp
+	tst.b	(a5)	;block size 0 means no more image data blocks
+	beq	GifReader_Create_ImageDataLpEnd
+	cmp.l	GifReader_EncodedImage(a4),a3
+	ble	GifReader_Create_ImageDataLpEnd	;only for safety - stop primaturely if block sizes were wrong and encoded image buffer is full
+	move.b	(a5)+,d0
+GifReader_Create_ImageDataBlockLp
+	move.b	(a5)+,-(a3)
+	sub.b	#1,d0
+	bne	GifReader_Create_ImageDataBlockLp
+	bra	GifReader_Create_ImageDataLp
+GifReader_Create_ImageDataLpEnd
+
+	move.l	a2,a0
+	bsr	FileReader_Destroy
+GifReader_Create_End
+	move.l	a4,a0
+	movem.l	(a7)+,a1-6/d0-7
+	rts
+
+;INSTANCE
+;  IN
+;    a0 = pointer to object instance
+GifReader_Destroy
+	movem.l	a0-3/a6/d0-1,-(a7)
+	move.l	4.w,a6
+	move.l	a0,a2
+	move.l	GifReader_Palette(a2),a1
+	cmp.l	#0,a1
+	beq	GifReader_Destroy_SkipNullPalette
+	move.w	GifReader_NumberOfColors(a2),d0
+	lsl.w	#1,d0
+	jsr	FreeMem(a6)
+GifReader_Destroy_SkipNullPalette
+	move.l	GifReader_EncodedImage(a2),a1
+	cmp.l	#0,a1
+	beq	GifReader_Destroy_SkipNullEncodedImage
+	move.l	GifReader_EncodedImageSize(a2),d0
+	jsr	FreeMem(a6)
+GifReader_Destroy_SkipNullEncodedImage
+	move.l	#GifReader_ObjectSize,d0
+	move.l	a2,a1
+	jsr	FreeMem(a6)
+	movem.l	(a7)+,a0-3/a6/d0-1
+	rts
+
+;INSTANCE
+;  IN
+;    a0 = pointer to object instance
+;  OUT
+;    a0 = pointer to new bitmap which contains gif image (consumer owns bitmap object)
+GifReader_DecodeToNewBitMap
+	movem.l	d0-2/a4-5,-(a7)
+	move.l	a0,a5
+	move.w	GifReader_Depth(a0),d0
+	move.w	GifReader_Width(a0),d1
+	move.w	GifReader_Height(a0),d2
+	bsr	BitMap_Create
+	move.l	a0,a4
+	move.l	a5,a0
+	move.l	a4,a1
+	clr.w	d0
+	clr.w	d1
+	bsr	GifReader_DecodeToBitMap
+	move.l	a4,a0
+	movem.l	(a7)+,d0-2/a4-5
+	rts
+
+;INSTANCE
+;  IN
+;    d0.w = x coordinate (top of image in destination bitmap)
+;    d1.w = y coordinate (left of image in destination bitmap)
+;    a0 = pointer to object instance
+;    a1 = pointer to existing bitmap into which image is to be drawn
+GifReader_DecodeToBitMap
+	movem.l	a2-6/d2-7,-(a7)
+	move.l	a0,a4	;gif reader object
+	move.w	d0,d3	;current x coordinate
+	move.w	d0,GifReader_DecodeToBitMap_LeftColumn	;leftmost column of the drawing area
+	move.w	d0,d7
+	add.w	GifReader_Width(a4),d7	;right column first out of draw area (next line condition)
+	move.w	d1,GifReader_DecodeToBitMap_TopRow
+	add.w	GifReader_Height(a4),d1
+	move.w	d1,GifReader_DecodeToBitMap_BottomRowFirstOutOfDrawingArea	;pix loop stop condition
+
+	move.l	a1,a5	;target BitMap
+	move.l	GifReader_ImageSize(a4),d0
+	move.l	#MEMF_FAST,d1
+	move.l	4.w,a6
+	jsr	AllocMem(a6)
+	move.l	d0,a3	;decoded buffer pointer
+	move.l	d0,GifReader_DecodeToBitMap_BufferStartPointer
+	move.w	GifReader_Depth(a4),d0
+	bsr	GifLzw_Create
+	move.l	a0,a6	;lzw pointer
+	move.l	GifReader_ImageSize(a4),d0
+	move.l	a6,a0
+	move.l	GifReader_EncodedImage(a4),a1
+	add.l	GifReader_EncodedImageSize(a4),a1
+	move.l	a3,a2
+	bsr	GifLzw_Decode
+	move.l	a6,a0
+	bsr	GifLzw_Destroy
+
+	move.w	GifReader_DecodeToBitMap_TopRow,d4	;current y coordinate
+	move.w	GifReader_DecodeToBitMap_LeftColumn,d5	;leftmost column of the drawing area
+	clr.w	d6	;pixel offset for whole frame of frame pixeling
+	clr.l	d5	;current pixel offset within decoded image
+GifReader_DecodeToBitMap_PixLp
+	move.l	a5,a0
+	move.w	d3,d0
+	move.w	d4,d1
+	clr.w	d2
+	move.b	(a3,d5.l),d2
+	bsr	Pix_Set
+	add.w	#GifReader_PixToBitMap_Stride,d3
+	add.l	#GifReader_PixToBitMap_Stride,d5
+GifReader_DecodeToBitMap_PixLp_EnsureInValidDrawingArea
+	cmp.w	d7,d3
+	blt	GifReader_DecodeToBitMap_PixLp
+GifReader_DecodeToBitMap_PixLp_AddRemainderToNextLine
+	sub.w	GifReader_Width(a4),d3
+	add.w	#1,d4
+	cmp.w	d7,d3
+	bge	GifReader_DecodeToBitMap_PixLp_AddRemainderToNextLine	
+	cmp.w	GifReader_DecodeToBitMap_BottomRowFirstOutOfDrawingArea,d4
+	blt	GifReader_DecodeToBitMap_PixLp
+	move.w	GifReader_DecodeToBitMap_TopRow,d4
+	move.w	GifReader_DecodeToBitMap_LeftColumn,d3
+	add.w	#GifReader_PixToBitMap_FrameStride,d6
+GifReader_DecodeToBitMap_PixLp_NormalizeFrameStartOffset
+	cmp.w	#GifReader_PixToBitMap_Stride,d6
+	blt	GifReader_DecodeToBitMap_PixLp_NewFrameStartOffsetPrepared
+	sub.w	#GifReader_PixToBitMap_Stride,d6
+	bra	GifReader_DecodeToBitMap_PixLp_NormalizeFrameStartOffset
+GifReader_DecodeToBitMap_PixLp_NewFrameStartOffsetPrepared
+	tst.w	d6
+	beq	GifReader_DecodeToBitMap_PixLp_FramesCompleted
+	add.w	d6,d3
+	move.w	GifReader_DecodeToBitMap_TopRow,d4
+	clr.l	d5
+	move.w	d6,d5
+	bra	GifReader_DecodeToBitMap_PixLp_EnsureInValidDrawingArea
+GifReader_DecodeToBitMap_PixLp_FramesCompleted
+	move.l	GifReader_ImageSize(a4),d0
+	move.l	GifReader_DecodeToBitMap_BufferStartPointer,a1
+	move.l	4.w,a6
+	jsr	FreeMem(a6)
+	movem.l	(a7)+,a2-6/d2-7
+	rts
+
+GifReader_DecodeToBitMap_BufferStartPointer ds.l	1
+GifReader_DecodeToBitMap_TopRow	ds.w	1
+GifReader_DecodeToBitMap_LeftColumn	ds.w	1
+GifReader_DecodeToBitMap_BottomRowFirstOutOfDrawingArea	ds.w	1
+
+GifReader_CompatibleGifTypeName
+	dc.b	"GIF87a"
+GifReader_CompatibleGifTypeNameEnd
+	even
+	

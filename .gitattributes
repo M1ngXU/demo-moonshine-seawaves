@@ -1,0 +1,5 @@
+api/** linguist-language=Assembly
+bin/** linguist-generated
+includes/** linguist-vendored
+src/** linguist-language=Assembly
+test/** linguist-language=Assembly

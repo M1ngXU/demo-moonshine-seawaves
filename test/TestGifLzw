@@ -1,0 +1,33 @@
+	include	"/includes/exec/exec_lib.i"
+	include	"/includes/exec/memory.i"
+
+	move.w	#preparedInput-input,d0
+	lea	input,a0
+	lea	preparedInput,a1
+	add.w	d0,a1
+prepLp
+	move.b	(a0)+,-(a1)
+	sub.w	#1,d0
+	bne	prepLp
+	
+	move.b	#2,d0
+	bsr	GifLzw_Create
+	move.l	a0,giflzw
+	move.l	#17*16,d0
+	lea	preparedInput+(preparedInput-input),a1
+	lea	output,a2
+	bsr	GifLzw_Decode
+	move.l	giflzw,a0
+	bsr	GifLzw_Destroy
+	rts
+giflzw	ds.l	1
+input	dc.b	$94,$05,$A9,$9B,$12,$6F,$18,$73,$A3,$86,$28,$81
+	dc.b	$0B,$D5,$5E,$34,$3D,$5D,$07,$81,$DA,$C3,$8D,$5E
+	dc.b	$B4,$89,$AA,$05,$B6,$E9,$78,$29,$F2,$3C,$D4,$36
+	dc.b	$8A,$56,$D8,$CE,$FB,$64,$4E,$28,$53,$A6,$F5,$3B
+	dc.b	$16,$87,$0B,$47,$72,$E8,$64,$4E,$8C,$8C,$02
+preparedInput	ds.b	preparedInput-input	;right-to-left
+output	ds.b	1000
+	even
+	include	"/api/GifLzw"
+

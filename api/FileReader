@@ -1,0 +1,85 @@
+FileReader_FileSize	equ	0
+FileReader_ContentPointer	equ	4
+FileReader_ObjectSize	equ	8
+
+;STATIC
+;  IN
+;    a0 = Address of the character array (0-delimited) containing the file name
+;  OUT
+;    a0 = pointer to an object instance (file size is indicated as 0 if no file found)
+FileReader_Create
+	movem.l	d1-4/a1-5/a6,-(a7)
+	move.l	a0,a2	;filename
+	move.l	#FileReader_ObjectSize,d0
+	move.l	#MEMF_FAST,d1
+	move.l	4.w,a6
+	jsr	AllocMem(a6)
+	move.l	d0,a5	;object pointer
+	clr.l	FileReader_FileSize(a5)
+	lea	FileReader_DosName,a1
+	moveq	#0,d0
+	jsr	OpenLibrary(a6)
+	move.l	d0,a3	;dos library
+	move.l	a2,d1
+	move.l	#ACCESS_READ,d2
+	jsr	Lock(a3)
+	tst.l	d0
+	beq	FileReader_Finisher
+
+	move.l	d0,d4	;file handle	
+	move.l	#260,d0	;examine info structure
+	move.l	#MEMF_FAST,d1
+	move.l	4.w,a6
+	jsr	AllocMem(a6)
+	move.l	d0,a4	;examine structure pointer
+	move.l	d4,d1
+	move.l	a4,d2
+	jsr	Examine(a3)
+	move.l	d4,d1
+	jsr	UnLock(a3)
+	move.l	124(a4),d0	;fib_Size
+	move.l	d0,FileReader_FileSize(a5)
+	move.l	#MEMF_FAST,d1
+	jsr	AllocMem(a6)
+	move.l	d0,FileReader_ContentPointer(a5)
+	
+	move.l	a2,d1
+	move.l	#MODE_OLDFILE,d2
+	jsr	Open(a3)
+	move.l	d0,d4
+	move.l	d4,d1
+	move.l	FileReader_ContentPointer(a5),d2
+	move.l	FileReader_FileSize(a5),d3
+	jsr	Read(a3)
+	move.l	d4,d1
+	jsr	Close(a3)
+	
+	move.l	a4,a1
+	move.l	#260,d0
+	move.l	4.w,a6
+	jsr	FreeMem(a6)
+	
+FileReader_Finisher
+	move.l	a5,a0
+	movem.l	(a7)+,d1-4/a1-5/a6
+	rts
+
+;INSTANCE
+;  IN
+;    a0 = pointer to object instance
+FileReader_Destroy
+	movem.l	d0-1/a1/a5/a6,-(a7)
+	move.l	4.w,a6
+	move.l	a0,a5
+	move.l	FileReader_FileSize(a5),d0
+	move.l	FileReader_ContentPointer(a5),a1
+	jsr	FreeMem(a6)
+	move.l	#FileReader_ObjectSize,d0
+	move.l	a5,a1
+	jsr	FreeMem(a6)
+	movem.l	(a7)+,d0-1/a1/a5/a6
+	rts
+
+FileReader_DosName
+	dc.b	'dos.library',0
+	even

@@ -1,0 +1,93 @@
+GifReader_Depth	equ	0
+GifReader_NumberOfColors	equ	2
+GifReader_Width	equ	4
+GifReader_Height	equ	6
+GifReader_ImageSize	equ	8
+GifReader_Palette	equ	12
+GifReader_FileReader	equ	16
+GifReader_FileImageDataOffset	equ	20
+GifReader_ObjectSize	equ	22
+
+;STATIC
+;  IN
+;    a0 = Address of the character array containing the name of the image 
+;  OUT
+;    a0 = pointer to object instance
+GifReader_Create
+	lea	GifReader_Example,a0
+	rts
+
+;INSTANCE
+;  IN
+;    a0 = pointer to object instance
+GifReader_Destroy
+	rts
+
+;INSTANCE
+;  IN
+;    a0 = pointer to object instance
+;  OUT
+;    a0 = pointer to new bitmap which contains gif image (consumer owns bitmap object)
+GifReader_DecodeToNewBitMap
+	movem.l	d0-2/a4-5,-(a7)
+	move.l	a0,a5
+	move.w	GifReader_Depth(a0),d0
+	move.w	GifReader_Width(a0),d1
+	move.w	GifReader_Height(a0),d2
+	bsr	BitMap_Create
+	move.l	a0,a4
+	move.l	a5,a0
+	move.l	a4,a1
+	bsr	GifReader_DecodeToBitMap
+	move.l	a4,a0
+	movem.l	(a7)+,d0-2/a4-5
+	rts
+
+;INSTANCE
+;  IN
+;    d0 = x coordinate (top of image in destination bitmap)
+;    d1 = y coordinate (left of image in destionation bitmap)
+;    a0 = pointer to object instance
+;    a1 = pointer to existing bitmap
+GifReader_DecodeToBitMap
+	movem.l	a2-5/d6-7,-(a7)
+	move.l	BitMap_Plane1(a1),a2
+	move.l	BitMap_Plane2(a1),a4
+	lea	GifReader_ExampleBitMapPl1,a3
+	lea	GifReader_ExampleBitMapPl2,a5
+	move.w	#5*2,d7
+	move.w	BitMap_Width(a1),d6
+	sub.w	#64,d6
+	lsr.w	#3,d6
+GifReader_DecodeToBitMapLp
+	move.l	(a3)+,(a2)+
+	move.l	(a5)+,(a4)+
+	add.l	d6,a2
+	add.l	d6,a3
+	sub.w	#1,d7
+	bne	GifReader_DecodeToBitMapLp
+	movem.l	(a7)+,d6-7/a2-5
+	rts
+
+GifReader_Example
+	dc.w	2,4,64,5
+	dc.l	GifReader_ExamplePalette
+GifReader_ExamplePalette
+	dc.w	$000,$0A0,$880,$A00
+GifReader_ExampleBitMap
+	dc.w	2
+	dc.w	64
+	dc.w	5
+GifReader_ExampleBitMapPl1
+	dc.l	%01101100111100011100111100011110,%00000000000000000000000000110110
+	dc.l	%11111110100110110110100110110000,%00110000000000000000000001111111
+	dc.l	%01111100111100110110111100011100,%01111000000000000000000000111110
+	dc.l	%00111000100000110110100000000110,%00110000000000000000000000011100
+	dc.l	%00010000100000011100100000111100,%00000000000000000000000000001000
+GifReader_ExampleBitMapPl2
+	dc.l	%01101100000000000000000000000000,%00000001000100111001000100110110
+	dc.l	%11111110000000000000000000000000,%00110001101101000100101001111111
+	dc.l	%01111100000000000000000000000000,%01111001010101111100010000111110
+	dc.l	%00111000000000000000000000000000,%00110001000101000100101000011100
+	dc.l	%00010000000000000000000000000000,%00000001000101000101000100001000
+	

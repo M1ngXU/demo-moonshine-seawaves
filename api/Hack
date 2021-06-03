@@ -1,0 +1,54 @@
+; parameter in d0: n for bitplane n (1<=n<=6)
+; ATTENTION: only works for bitplane 1
+; result in d0
+Hack_GetBitplaneAddress
+	movem.l	d6-7/a0,-(a7)
+	move.l	d0,d6
+	lsl.w	#2,d6
+	add.w	#$E0-4,d6
+	move.w	d6,d7
+	add.w	#2,d7
+	moveq	#2,d0
+	bsr	Hack_GetCopperListAddress
+	move.l	d0,a0
+	clr.l	d0
+Hack_GetBitplaneAddress_Loop
+	cmp.w	(a0),d6
+	bne	Hack_GetBitplaneAddress_NotBpHigh
+	swap	d0
+	move.w	2(a0),d0
+	swap	d0
+Hack_GetBitplaneAddress_NotBpHigh
+	cmp.w	(a0),d7
+	bne	Hack_GetBitplaneAddress_NotBpLow
+	move.w	2(a0),d0
+Hack_GetBitplaneAddress_NotBpLow
+	cmp.w	#$FFFF,(a0)+
+	bne	Hack_GetBitplaneAddress_Loop
+	movem.l	(a7)+,d6-7/a0
+	rts
+
+; parameter in d0: n for copper list n (1<=n<=2)
+; result in d0
+Hack_GetCopperListAddress
+	movem.l	d1/d7/a1/a6,-(a7)
+	moveq	#Hack_GfxCopperInit,d7
+	cmp.b	#2,d0
+	bne	Hack_GetCopperListAddress_Start
+	moveq	#Hack_GfxCopperLOFlist,d7
+Hack_GetCopperListAddress_Start
+	move.l	4.w,a6
+	moveq	#0,d0
+	lea	Hack_GfxName,a1
+	jsr	-552(a6)
+	move.l	d0,a6
+	move.l	(a6,d7),d0
+	movem.l	(a7)+,d1/d7/a1/a6
+	rts
+
+Hack_GfxCopperInit	equ	038
+Hack_GfxCopperLOFlist	equ	050
+
+Hack_GfxName
+	dc.b	'graphics.library',0
+	even
