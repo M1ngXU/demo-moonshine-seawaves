@@ -1,0 +1,14 @@
+;STATIC
+;  OUT
+;    d0.b = is moused pressed ? FF : 00
+Mouse_IsPressed
+	movem.l	a6,-(a7)
+	clr.b	d0
+	lea	ciaa,a6
+	btst	#CIAB_GAMEPORT0,ciapra(a6)
+	bne	Mouse_IsPressed_End
+	move.b	#$FF,d0
+Mouse_IsPressed_End
+	movem.l	(a7)+,a6
+	rts
+	

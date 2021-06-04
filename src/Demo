@@ -1,0 +1,149 @@
+	include	"/includes/hardware/base_addr.i"
+	include	"/includes/hardware/cia.i"
+	include	"/includes/hardware/offsets.i"
+	include	"/includes/hardware/dmabits.i"
+	include	"/includes/hardware/intbits.i"
+	include	"/includes/exec/exec_lib.i"
+	include	"/includes/exec/memory.i"
+	include	"/includes/libraries/dos_lib.i"
+	include	"/includes/libraries/dos.i"
+
+WaterStep	equ	5
+WaterUpdatePerMainLoop	equ	2
+Starter
+	lea	cursorFileName,a0
+	bsr	GifReader_Create
+	move.l	a0,cursorGifReader
+	bsr	GifReader_DecodeToNewBitMap
+	move.l	a0,cursorBitMap
+	bsr	Sprite_Create
+	move.l	a0,cursorSprite
+	
+	lea	backgroundFileName,a0
+	bsr	GifReader_Create
+	move.l	a0,backgroundGifReader
+	move.w	GifReader_Depth(a0),d0
+	move.w	#320+16,d1
+	move.w	#240,d2
+	bsr	BitMap_Create
+	move.l	a0,bm
+	
+	bsr	CL_Prepare
+	
+	move.l	bm,a0
+	move.l	backgroundGifReader,a1
+	move.l	GifReader_Palette(a1),a1
+	lea	CL_Start,a2
+	move.l	#CL_End-CL_Start,d0
+	bsr	CopperList_Create
+	move.l	a0,cl
+	bsr	CopperList_Activate
+	
+	move.w	#8,d0
+	move.w	#0,d1
+	move.l	backgroundGifReader,a0
+	move.l	bm,a1
+	bsr	GifReader_DecodeToBitMap
+	
+	move.l	backgroundGifReader,a0
+	bsr	GifReader_Destroy
+	
+	move.w	#160,x
+	move.w	#80,y
+	clr.w	d6	;scroll
+	
+MainLoop
+	bsr	UpdatePosition
+	move.w	#WaterUpdatePerMainLoop,d0
+RepeatedWaterUpdate
+	add.w	#WaterStep,d6
+	bsr	CL_UpdateWater
+	sub.w	#1,d0
+	bne	RepeatedWaterUpdate
+	
+	bsr	Joystick_IsPressed
+	tst.b	d0
+	beq	NoJoystickPressed
+	move.w	x,d0
+	move.w	y,d1
+	move.w	#19,d2
+	move.w	#1,d3
+	move.l	bm,a0
+	bsr	Pix_SetWithRadius
+NoJoystickPressed
+
+	bsr	Mouse_IsPressed
+	tst.b	d0
+	beq	MainLoop
+	
+	bsr	CopperList_ResetToOs
+	move.l	cl,a0
+	bsr	CopperList_Destroy
+	move.l	bm,a0
+	bsr	BitMap_Destroy
+	move.l	cursorSprite,a0
+	bsr	Sprite_Destroy
+	move.l	cursorBitMap,a0
+	bsr	BitMap_Destroy
+	move.l	cursorGifReader,a0
+	bsr	GifReader_Destroy
+	rts
+	
+UpdatePosition
+	bsr	Joystick_GetDirection
+	add.w	x,d0
+	add.w	y,d1
+	;pix-width is 3 so some space needed effective drawing window in [1,1]-[318,158]
+	cmp.w	#8+1,d0
+	bge	UpdatePositionNotTooLeft
+	move.w	#8+1,d0
+UpdatePositionNotTooLeft
+	cmp.w	#320-1+8-1,d0
+	blt	UpdatePositionNotTooRight
+	move.w	#320-1+8-1,d0
+UpdatePositionNotTooRight
+	cmp.w	#1,d1	;pix-width is 3 so some space needed
+	bge	UpdatePositionNotTooTop
+	move.w	#1,d1
+UpdatePositionNotTooTop
+	cmp.w	#160-1-1,d1	;pix-width is 3 so some space needed
+	ble	UpdatePositionNotTooBottom
+	move.w	#160-1-1,d1
+UpdatePositionNotTooBottom
+	move.w	d0,x
+	move.w	d1,y
+	sub.w	#6,d0	;difstrt is 16 to the left but scrolled 8 to the right ?=? 6
+	sub.w	#1,d0	;cursor hotspot at (1,1)
+	move.w	d1,y
+	sub.w	#1,d1	;cursor hotspot at (1,1)
+	move.l	cursorSprite,a0
+	move.l	cl,a1
+	bsr	Sprite_SetPosition
+	rts
+	
+x	ds.w	1
+y	ds.w	1
+bm	ds.l	1
+cl	ds.l	1
+backgroundGifReader	ds.l	1
+cursorGifReader	ds.l	1
+cursorBitMap	ds.l	1
+cursorSprite	ds.l	1
+cursorFileName	dc.b	"/pics/KerbalCursor.gif",0
+;background must be 320x160, depth 1-6 and take care of cursor colors
+;backgroundFileName	dc.b	"/pics/Europa_DitheringNone.gif",0
+backgroundFileName	dc.b	"/pics/Europa_DitheringNone_M1ngXU.gif",0
+	even
+
+	include	"Demo_CopperList"
+	include	"/api/BitMap"
+	include	"/api/CopperList"
+	include	"/api/FileReader"
+	include	"/api/GifReader"
+	include	"/api/GifLzw"
+	include	"/api/Hack"
+	include	"/api/Joystick"
+	include	"/api/Mouse"
+	include	"/api/Pix"
+	include	"/api/Sprite"
+	include	"/api/Trigo"

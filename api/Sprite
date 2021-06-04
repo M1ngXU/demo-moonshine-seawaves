@@ -1,0 +1,100 @@
+;OBJECT STRUCTURE
+Sprite_Height	equ	0
+Sprite_DmaStructurePointer	equ	2
+Sprite_DmaStructureSize	equ	6
+
+;NOT OBJECT STRUCTURE
+Sprite_ObjSize	equ	8
+Sprite_DmaStructure_Pos	equ	0
+Sprite_DmaStructure_Ctl	equ	2
+
+;STATIC
+;  IN
+;    a0 = bitmap object pointer (must be width 16, depth 2, first two bitplanes taken)
+;  OUT
+;    a0 = sprite object pointer
+Sprite_Create
+	movem.l	d0-1/a1-2/a4-6,-(a7)
+	move.l	a0,a4
+	move.l	#Sprite_ObjSize,d0
+	move.l	#MEMF_FAST,d1
+	move.l	4.w,a6
+	jsr	AllocMem(a6)
+	move.l	d0,a5	;sprite object pointer
+	move.w	BitMap_Height(a4),Sprite_Height(a5)
+	move.w	BitMap_Width(a4),d0
+	lsr.w	#2,d0	;two bytes per 8-bit width
+	move.w	BitMap_Height(a4),d1
+	mulu	d1,d0
+	add.w	#4+2,d0	;header (position + control) and last 0 line
+	move.w	d0,Sprite_DmaStructureSize(a5)
+	move.l	#MEMF_CHIP,d1
+	jsr	AllocMem(a6)
+	move.l	d0,Sprite_DmaStructurePointer(a5)
+	move.l	BitMap_Plane1(a4),a0
+	move.l	BitMap_Plane2(a4),a1
+	move.l	d0,a2
+	clr.l	(a2)+	;skip header (needs to be initialized in set position)
+	move.w	Sprite_DmaStructureSize(a5),d0
+	sub.w	#4+2,d0	;finish copying early (before 0 end word)
+Sprite_CreateLp
+	move.w	(a0)+,(a2)+
+	move.w	(a1)+,(a2)+
+	sub.w	#4,d0
+	bne	Sprite_CreateLp
+	clr.w	(a2)	;0 end word
+	move.l	a5,a0	
+	movem.l	(a7)+,d0-1/a1-2/a4-6
+	rts
+
+;INSTANCE
+;  IN
+;    d0.w = x position (relative to display window)
+;    d1.w = y position (relative to display window)
+;    a0 = sprite object pointer
+;    a1 = copper list object pointer (to get display window offsets)
+Sprite_SetPosition
+	movem.l	d2-3/a2,-(a7)
+	move.l	Sprite_DmaStructurePointer(a0),a2
+	add.w	CopperList_DisplayWindowLeft(a1),d0
+	sub.w	#1,d0	;documented issue with sprite timing - will always come one pix to the right
+	add.w	CopperList_DisplayWindowTop(a1),d1
+	move.w	d0,d2
+	move.w	d1,d3
+	lsl.w	#8,d3
+	lsr.w	#1,d2
+	or.w	d3,d2
+	move.w	d2,Sprite_DmaStructure_Pos(a2)
+	move.w	d1,d2	;end vertical
+	add.w	Sprite_Height(a0),d2
+	and.w	#1,d0	;SH0
+	lsr.w	#6,d1
+	and.w	#%100,d1	;SV8
+	or.w	d1,d0
+	move.w	d2,d1	;d1 = vertical end high bit
+	lsr.w	#7,d1
+	and.w	#%10,d1
+	or.w	d1,d0
+	lsl.w	#8,d2
+	or.w	d2,d0
+	move.w	d0,Sprite_DmaStructure_Ctl(a2)
+	movem.l	(a7)+,d2-3/a2
+	rts
+	
+;INSTANCE
+;  IN
+;    a0 = sprite object pointer
+Sprite_Destroy
+	movem.l	d0-1/a1-2/a6,-(a7)
+	move.l	a0,a2
+	move.l	Sprite_DmaStructurePointer(a2),a1
+	clr.l	d0
+	move.w	Sprite_DmaStructureSize(a2),d0
+	move.l	4.w,a6
+	jsr	FreeMem(a6)
+	move.l	a2,a1
+	move.l	#Sprite_ObjSize,d0
+	jsr	FreeMem(a6)
+	movem.l	(a7)+,d0-1/a1-2/a6
+	rts
+	

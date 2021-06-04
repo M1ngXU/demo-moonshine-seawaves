@@ -1,0 +1,43 @@
+;STATIC
+;  OUT
+;    d0.b = is firebutton pressed ? FF : 00
+Joystick_IsPressed
+	movem.l	a6,-(a7)
+	clr.b	d0
+	lea	ciaa,a6
+	btst	#CIAB_GAMEPORT1,ciapra(a6)
+	bne	Joystick_IsPressed_End
+	move.b	#$FF,d0
+Joystick_IsPressed_End
+	movem.l	(a7)+,a6
+	rts
+
+;STATIC
+;  OUT
+;    d0.w = joystick x-direction in [-1,1]
+;    d1.w = joystick y-direction in [-1,1]
+Joystick_GetDirection
+	clr.w	d0
+	clr.w	d1
+	movem.l	d6-7/a6,-(a7)
+	lea	ocs,a6
+	move.w	joy1dat(a6),d7
+	move.w	d7,d6
+	lsl.w	#1,d6
+	eor.w	d7,d6
+	btst	#1,d7
+	beq	checkBack
+	move.w	#1,d0
+checkBack	btst	#1,d6
+	beq	checkLeft
+	move.w	#1,d1
+checkLeft	btst	#9,d7
+	beq	checkFwd
+	move.w	#-1,d0
+checkFwd	btst	#9,d6
+	beq	ApplyJoyToPosEnd
+	move.w	#-1,d1	
+ApplyJoyToPosEnd
+	movem.l	(a7)+,d6-7/a6
+	rts
+	

@@ -1,0 +1,105 @@
+;STATIC
+;  IN
+;    d0.w = x
+;    d1.w = y
+;    d2.w = color
+;    a0   = bitmap
+Pix_Set
+	movem.l	d3-5/a1-2,-(a7)
+	mulu	BitMap_Width(a0),d1
+	add.l	d0,d1	;offset in bytes
+	lsr.l	#3,d1
+	and.l	#7,d0	;offset in bits
+	move.b	d0,d4
+	move.b	#7,d0
+	sub.b	d4,d0
+	
+	move.w	BitMap_Depth(a0),d5	;depth countdown-er
+	move.l	#-1,d4	;color bit index
+	move.l	a0,a2
+	add.l	#BitMap_Plane1,a2
+Pix_Set_Lp
+	sub.w	#1,d5
+	blt	Pix_Set_End
+	add.w	#1,d4
+	move.l	(a2)+,a1	;current bitplane
+	btst	d4,d2
+	beq	Pix_Set_Clear
+	bset	d0,(a1,d1)
+	bra	Pix_Set_Lp
+Pix_Set_Clear
+	bclr	d0,(a1,d1)
+	bra	Pix_Set_Lp
+Pix_Set_End
+	movem.l	(a7)+,d3-5/a1-2
+	rts
+
+;STATIC
+;  IN
+;    d0.w = x
+;    d1.w = y
+;    d2.w = color
+;    d3.w = pix radius (0 means just one pix, 1 means 3x3...)
+;    a0   = bitmap
+Pix_SetWithRadius
+	movem.l	d4-7,-(a7)
+	move.w	d0,d4	;current offset x
+	move.w	d1,d5	;current offset y
+	sub.w	d3,d4
+	sub.w	d3,d5
+	move.w	d0,d6	;max offset x
+	move.w	d1,d7	;max offset y
+	add.w	d3,d6
+	add.w	d3,d7
+	move.w	d5,d3	;min offset y
+Pix_SetWithRadiusHorLoop
+	move.w	d3,d5
+Pix_SetWithRadiusVertLoop
+	move.w	d4,d0
+	move.w	d5,d1
+	bsr	Pix_Set
+	add.w	#1,d5
+	cmp.w	d7,d5
+	ble	Pix_SetWithRadiusVertLoop
+	add.w	#1,d4
+	cmp.w	d6,d4
+	ble	Pix_SetWithRadiusHorLoop
+	movem.l	(a7)+,d4-7
+	rts
+
+;STATIC
+;  IN
+;    d0.w = x
+;    d1.w = y
+;    a0   = bitmap
+;  OUT
+;    d0.w = color
+Pix_Get
+	movem.l	d3-5/a1-2,-(a7)
+	clr.w	d5	;d5 = result
+	mulu	BitMap_Width(a0),d1
+	add.l	d0,d1	;offset in bytes
+	lsr.l	#3,d1
+	and.l	#7,d0	;offset in bits
+	move.b	d0,d4
+	move.b	#7,d0
+	sub.b	d4,d0
+	
+	move.w	BitMap_Depth(a0),d3	;depth countdown-er
+	move.l	#-1,d4	;color bit index
+	move.l	a0,a2
+	add.l	#BitMap_Plane1,a2
+Pix_Get_Lp
+	sub.w	#1,d3
+	blt	Pix_Get_End
+	add.w	#1,d4
+	move.l	(a2)+,a1	;current bitplane
+	btst	d0,(a1,d1)
+	beq	Pix_Get_Lp
+	bset	d4,d5
+	bra	Pix_Get_Lp
+Pix_Get_End
+	move.w	d5,d0
+	movem.l	(a7)+,d3-5/a1-2
+	rts
+	

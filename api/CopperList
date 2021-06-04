@@ -1,0 +1,202 @@
+;OBJECT STRUCTURE
+CopperList_Size		equ	0
+CopperList_Pointer	equ	2
+CopperList_AddonPointer	equ	6
+CopperList_DisplayWindowTop	equ	10
+CopperList_DisplayWindowLeft	equ	12
+
+;NOT OBJECT STRUCTURE
+CopperList_ObjSize	equ	14
+CopperList_SuppressedInterrupts	equ	INTF_VERTB+INTF_PORTS
+
+;STATIC
+;  IN
+;    a0 = BitMap
+;    a1 = Palette
+;    a2 = List add-on (added just before final WAIT(255,254))
+;    d0.w = Length of list add-on
+;  OUT
+;    a0 = copper list object pointer
+CopperList_Create
+CopperList_Create_BufferSize	equ	10000	; buffer size for initially constructing copper list
+	movem.l	d1-6/a3-6,-(a7)
+	move.w	d0,d5	;Length of list add-on
+	move.l	a2,d6	;pointer of list add-on
+	move.l	a0,a3	;Bitmap
+	move.l	a1,a2	;Palette
+	
+	move.l	4.w,a6
+	move.l	#CopperList_Create_BufferSize,d0
+	move.w	#MEMF_FAST,d1
+	jsr	AllocMem(a6)
+	move.l	d0,a4	;copper list buffer during construction
+	move.l	d0,a5	;copper list buffer current position
+	
+	move.w	BitMap_Depth(a3),d3	;MIN(bitmap depth, 5)
+	cmp.w	#6,d3
+	blt	CopperList_Create_IfDepthNOTSix
+	move.w	#5,d3
+CopperList_Create_IfDepthNOTSix
+	move.w	#1,d2	;counter for number of colors
+	lsl.w	d3,d2
+	
+	move.w	#bpl1mod,(a5)+
+	clr.w	(a5)+
+	move.w	#bpl2mod,(a5)+
+	clr.w	(a5)+
+	move.w	#bplcon1,(a5)+
+	clr.w	(a5)+
+	
+	move.w	#color00,d1	;current ocs offset
+CopperList_Create_ColorLp
+	move.w	d1,(a5)+
+	move.w	(a2)+,(a5)+
+	add.w	#2,d1
+	sub.w	#1,d2
+	bne	CopperList_Create_ColorLp
+	
+	move.w	BitMap_Depth(a3),d1	;depth counter
+	move.w	#bpl1pth,d2		;ocs offset counter for bitplane
+	move.w	#BitMap_Plane1,d3	;BitMap offset counter for current bitplane
+	
+CopperList_Create_BitPlanesLp
+	sub.w	#1,d1
+	blt	CopperList_Create_BitPlanesEnd
+	move.w	d2,(a5)+
+	move.w	(a3,d3),(a5)+
+	add.w	#2,d2
+	move.w	d2,(a5)+
+	move.w	2(a3,d3),(a5)+
+	add.w	#2,d2
+	add.w	#4,d3
+	bra	CopperList_Create_BitPlanesLp
+CopperList_Create_BitPlanesEnd
+
+CopperList_Create_SetViewportAndDepth
+	move.w	BitMap_Depth(a3),d3
+	lsl.w	#8,d3
+	lsl.w	#4,d3	;set BPUx for depth information
+	bset	#9,d3	;set COLOR flag to activate bitmap	
+	move.w	#bplcon0,(a5)+
+	move.w	d3,(a5)+
+	
+	move.w	BitMap_Width(a3),d3
+	lsr.w	#3,d3
+	move.w	#$2C81+320/8,d4	;start earlier if width more than 320 (would be 2C81) 
+	sub.w	d3,d4	;DIWSTRT
+	move.w	#diwstrt,(a5)+
+	move.w	d4,(a5)+
+	move.w	BitMap_Height(a3),d3
+	lsl.w	#8,d3	
+	add.w	#$2BC1,d3	;start bitmap dma late (to crop left side so that water anim doesn't show to the left)
+	move.w	#diwstop,(a5)+
+	
+	move.w	d3,(a5)+
+	move.w	BitMap_Width(a3),d3
+	lsr.w	#1,d3
+	move.w	#$38+320/2,d0	;start earlier if width more than 320 (would be 38)
+	sub.w	d3,d0
+	move.w	#ddfstrt,(a5)+
+	move.w	d0,(a5)+
+	move.w	#ddfstop,(a5)+
+	move.w	#$d0,(a5)+
+	
+CopperList_Create_DisableSprites
+	move.w	#spr0pth,d0
+	move.w	#spr0ptl,d1
+	move.w	#8,d3
+CopperList_Create_DisableSpritesLp
+	move.w	d0,(a5)+
+	clr.w	(a5)+
+	move.w	d1,(a5)+
+	clr.w	(a5)+
+	add.w	#spr1ptl-spr0ptl,d0
+	add.w	#spr1ptl-spr0ptl,d1
+	sub.w	#1,d3
+	bne	CopperList_Create_DisableSpritesLp
+	
+	move.l	d6,a0
+	move.l	a5,d6	;addon list pointer offset
+	sub.l	a4,d6
+	
+CopperList_Create_AddonListLp
+	sub.w	#4,d5
+	blt	CopperList_Create_AddonListEnd
+	move.l	(a0)+,(a5)+
+	bra	CopperList_Create_AddonListLp
+CopperList_Create_AddonListEnd
+	move.l	#$FFFFFFFE,(a5)+
+	
+	move.l	a5,d0	;copper list length
+	sub.l	a4,d0
+	move.w	d0,d2	;counter of remaining copper list length
+	move.w	d0,d3	;copper list length
+	move.l	#MEMF_CHIP,d1
+	jsr	AllocMem(a6)
+	move.l	d0,a3	;Current position copper list on chip mem
+	move.l	d0,a2	;Copper list on chip mem
+	add.l	d0,d6
+	
+	move.l	a4,a5
+CopperList_Create_ToChipMemLp
+	move.l	(a5)+,(a3)+
+	sub.w	#4,d2
+	bne	CopperList_Create_ToChipMemLp
+	
+	move.l	#CopperList_Create_BufferSize,d0
+	move.l	a4,a1
+	jsr	FreeMem(a6)
+	
+	move.l	#CopperList_ObjSize,d0
+	move.w	#MEMF_FAST,d1
+	jsr	AllocMem(a6)
+	move.l	d0,a0
+	move.w	d3,CopperList_Size(a0)
+	move.l	a2,CopperList_Pointer(a0)
+	move.l	d6,CopperList_AddonPointer(a0)
+	clr.w	d0
+	move.b	d4,d0
+	move.w	d0,CopperList_DisplayWindowLeft(a0)
+	lsr.w	#8,d4
+	move.w	d4,CopperList_DisplayWindowTop(a0)
+	movem.l	(a7)+,d1-6/a3-6
+	rts
+
+;INSTANCE
+;  IN
+;    a0 = copper list object pointer
+CopperList_Destroy
+	movem.l	d0-1/a1-2/a6,-(a7)
+	move.l	a0,a2
+	clr.l	d0
+	move.w	CopperList_Size(a0),d0
+	move.l	CopperList_Pointer(a0),a1
+	move.l	4.w,a6
+	jsr	FreeMem(a6)
+	move.l	#CopperList_ObjSize,d0
+	move.l	a2,a1
+	jsr	FreeMem(a6)
+	movem.l	(a7)+,d0-1/a1-2/a6
+	rts
+
+;INSTANCE
+;  IN
+;    a0 = copper list object pointer
+CopperList_Activate
+	movem.l	a1,-(a7)
+	lea	ocs,a1
+	move.l	CopperList_Pointer(a0),cop1lch(a1)
+	move.w	#CopperList_SuppressedInterrupts,intena(a1)
+	movem.l	(a7)+,a1
+	rts
+
+;STATIC
+CopperList_ResetToOs
+	movem.l	a1,-(a7)
+	lea	ocs,a1
+	move.l	#1,d0
+	bsr	Hack_GetCopperListAddress
+	move.w	#INTF_SETCLR+CopperList_SuppressedInterrupts,intena(a1)
+	move.l  d0,cop1lch(a1)
+	movem.l	(a7)+,a1
+	rts
